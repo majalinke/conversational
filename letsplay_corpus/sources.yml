@@ -1,0 +1,24 @@
+schema_version: 1
+register: letsplay
+
+# One entry per complete communicative event.
+# Preserve real-time structure; trim only material clearly outside the event.
+#
+# - event_id: unique stable identifier
+#   principal_speaker_id: stable pseudonymous speaker identifier
+#   source_platform: e.g. youtube
+#   source_url: public source page
+#   title: source title
+#   series_or_course: repeated series name
+#   publication_date: YYYY-MM-DD or null
+#   event_start_seconds: first included second
+#   event_end_seconds: final included second or null for source end
+#   trim_start_reason: null or brief reason
+#   trim_end_reason: null or brief reason
+#   additional_speakers: []
+#   editing_level: unedited | lightly_edited | heavily_edited | uncertain
+#   selection_status: candidate | auditioned | selected | excluded
+#   audition_date: YYYY-MM-DD or null
+#   notes: free-text selection notes
+
+events: []

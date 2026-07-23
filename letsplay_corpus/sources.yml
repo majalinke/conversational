@@ -21,4 +21,22 @@ register: letsplay
 #   audition_date: YYYY-MM-DD or null
 #   notes: free-text selection notes
 
-events: []
+events:
+  - event_id: letsplay_christopherodd_xcom2_002
+    principal_speaker_id: christopherodd
+    source_platform: youtube
+    source_url: https://www.youtube.com/watch?v=xLy6EGVtb0w
+    title: "XCOM 2 - Part 2 - Download Equipment Allocations"
+    series_or_course: "XCOM 2 Legend Ironman"
+    publication_date:
+    event_start_seconds: 0
+    event_end_seconds: 2093
+    trim_start_reason: ""
+    trim_end_reason: ""
+    additional_speakers: []
+    editing_level: unknown
+    selection_status: candidate
+    auditioned_by: ""
+    audition_date:
+    notes: "Metadata verified. Full-event audition pending."
+

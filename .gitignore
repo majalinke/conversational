@@ -1,0 +1,37 @@
+# Credentials and local configuration
+.env
+.env.*
+*.token
+
+# Python and notebooks
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+.pytest_cache/
+
+# Raw media and large local data
+*.wav
+*.mp3
+*.mp4
+*.m4a
+*.flac
+*.ogg
+*.webm
+*.parquet
+*.arrow
+*.feather
+
+data/
+raw_data/
+derived_data/
+cluster_data/
+models/
+checkpoints/
+cache/
+logs/
+
+# Cluster job output
+slurm-*.out
+slurm-*.err

@@ -49,3 +49,27 @@ events:
       speaker. The combined table contains 4182 syntax rows; 4175 have audio
       alignment. Seven syntax rows from native Whisper segments 200 and 209
       have no corresponding aligned audio words and remain syntax-only.
+
+  - event_id: letsplay_christopherodd_xcom2_003
+    principal_speaker_id: christopherodd
+    source_platform: youtube
+    source_url: https://www.youtube.com/watch?v=3EaUA_8VHTg
+    title: "XCOM 2 - Part 3 - Rescue VIP Dr Kent Nielsen"
+    series_or_course: "XCOM 2 Legend Ironman"
+    publication_date:
+    event_start_seconds: 0
+    event_end_seconds: 2263
+    trim_start_reason: ""
+    trim_end_reason: ""
+    additional_speakers: []
+    editing_level: uncertain
+    selection_status: candidate
+    auditioned_by: ""
+    audition_date:
+    principal_speaker_diarization_id:
+    principal_speaker_assignment_status: pending
+    notes: >-
+      Immediately adjacent episode selected for a within-speaker comparison
+      with letsplay_christopherodd_xcom2_002. No full human listen-through is
+      planned; acceptance will be based on transcript sampling, timing quality
+      control, speaker checks, and event-level diagnostics.

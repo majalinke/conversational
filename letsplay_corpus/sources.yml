@@ -36,15 +36,16 @@ events:
     additional_speakers: []
     editing_level: no_obvious_dense_editing
     selection_status: accepted_for_pilot
-    auditioned_by: "Maja Linke"
-    audition_date: 2026-07-23
+    auditioned_by: ""
+    audition_date:
     principal_speaker_diarization_id: letsplay_christopherodd_xcom2_002_S01
     principal_speaker_assignment_status: accepted_with_minor_boundary_errors
     notes: >-
-      Continuous naturalistic live commentary. Scripted in-game dialogue is
-      retained in the complete event and separated using source-local
-      diarization. S01 is the principal speaker. The combined table contains
-      4182 syntax rows; 4175 have audio alignment. Seven syntax rows from
-      native Whisper segments 200 and 209 have no corresponding aligned audio
-      words and remain syntax-only.
-
+      Accepted as a technical pilot based on transcript sampling, timing quality
+      control, and speaker checks; no complete human listen-through was
+      performed. Continuous naturalistic live commentary is present in the
+      sampled sections. Scripted in-game dialogue is retained in the complete
+      event and separated using source-local diarization. S01 is the principal
+      speaker. The combined table contains 4182 syntax rows; 4175 have audio
+      alignment. Seven syntax rows from native Whisper segments 200 and 209
+      have no corresponding aligned audio words and remain syntax-only.

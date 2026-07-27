@@ -1,0 +1,6 @@
+principal_speaker_id,channel_url,target_audio_hours,min_event_minutes,max_event_minutes,max_channel_videos,selection_status,notes
+christopherodd,https://www.youtube.com/@ChristopherOdd/videos,18,20,120,500,selected_for_bulk,"Pilot speaker; retain complete single-speaker gameplay events."
+quill18,https://www.youtube.com/@quill18/videos,18,20,120,500,candidate_for_bulk,"Long-form strategy and simulation gameplay; exclude tutorials, reviews, announcements, and edited highlights."
+nookrium,https://www.youtube.com/@Nookrium/videos,18,20,120,500,candidate_for_bulk,"Long-form indie and strategy gameplay; exclude first-look summaries, reviews, guides, and edited highlights."
+aavak,https://www.youtube.com/@Aavak/videos,18,20,120,500,candidate_for_bulk,"Long-form lightly edited gameplay; retain complete episodes and exclude guides, reviews, and highlights."
+welonz,https://www.youtube.com/@Welonz/videos,18,20,120,500,candidate_for_bulk,"Story-driven complete playthrough episodes; retain natural pauses and in-game dialogue."

@@ -32,7 +32,7 @@ for path in "$MANIFEST_CSV" "$DATA_ROOT" "$ANALYSIS_ROOT" "$TOKENIZER_ROOT"; do
     }
 done
 
-EVENT_ID="$({
+EVENT_ID="$(
 python - "$MANIFEST_CSV" "$TASK_INDEX" <<'PY'
 import csv
 import sys
@@ -46,7 +46,7 @@ if index < 0 or index >= len(rows):
     raise SystemExit(f"array index {index} outside manifest range 0..{len(rows) - 1}")
 print(rows[index]["event_id"])
 PY
-} )"
+)"
 
 TRANSCRIPT_HOST="$DATA_ROOT/derived/letsplay/${EVENT_ID}/raw_transcripts/${EVENT_ID}.whisper_raw.json"
 OUTPUT_PARENT_HOST="$DATA_ROOT/derived/letsplay/${EVENT_ID}"

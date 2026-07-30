@@ -14,5 +14,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Validate prototype parity and BPE corpus preparation
+      - name: Compile pipeline scripts
+        run: python -m compileall -q letsplay_corpus/scripts tests
+      - name: Validate prototype parity, splits, timing, and BPE corpus preparation
         run: python tests/test_pipeline_contract.py

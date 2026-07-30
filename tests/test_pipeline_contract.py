@@ -22,6 +22,7 @@ EXPECTED_CAPABILITIES = {
     "spacy_structure_annotation",
     "event_level_data_splits",
     "tokenizer_training_corpus",
+    "corpus_sufficiency_gate",
     "bpe_tokenizer_training",
     "special_token_atomicity_check",
     "dummy_downstream_task",
@@ -75,6 +76,12 @@ def main() -> int:
         f"unexpected={sorted(ids - EXPECTED_CAPABILITIES)}"
     )
     assert contract["special_tokens"] == EXPECTED_SPECIAL_TOKENS
+    assert contract["training_data_contract"]["minimum_training_word_estimate_before_bpe"] == 3_000_000
+    assert contract["training_data_contract"]["continuous_timing_fields"] == [
+        "start_seconds",
+        "end_seconds",
+        "preceding_gap_seconds",
+    ]
     for capability in capabilities:
         status = capability["bulk_status"]
         assert status in ALLOWED_STATUSES

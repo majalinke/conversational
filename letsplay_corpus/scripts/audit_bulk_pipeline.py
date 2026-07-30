@@ -11,13 +11,20 @@ from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any
 
-STAGES = ("manifest", "audio", "transcripts", "structure", "tokenizer")
+STAGES = ("manifest", "audio", "transcripts", "structure", "combined", "tokenizer")
 REQUIRED_STRUCTURE_FILES = (
     "summary.json",
     "segment_statistics.csv",
     "token_dependencies.csv",
     "word_sequence_statistics.csv",
     "processed_transcript.spacy.json",
+)
+REQUIRED_COMBINED_FILES = (
+    "events.csv",
+    "segments.csv",
+    "token_dependencies.csv",
+    "word_sequences.csv",
+    "summary.json",
 )
 REQUIRED_TOKENIZER_FILES = (
     "train.txt",
@@ -54,7 +61,15 @@ def expected_split_counts(total: int) -> dict[str, int]:
     raw = {split: total * fraction for split, fraction in fractions.items()}
     counts = {split: int(value) for split, value in raw.items()}
     remaining = total - sum(counts.values())
-    order = sorted(fractions, key=lambda split: (raw[split] - counts[split], split == "train", split == "validation"), reverse=True)
+    order = sorted(
+        fractions,
+        key=lambda split: (
+            raw[split] - counts[split],
+            split == "train",
+            split == "validation",
+        ),
+        reverse=True,
+    )
     for split in order[:remaining]:
         counts[split] += 1
     return counts
@@ -89,6 +104,7 @@ def main() -> int:
     parser.add_argument("--manifest", type=Path, required=True)
     parser.add_argument("--data-root", type=Path, required=True)
     parser.add_argument("--stage", choices=STAGES, required=True)
+    parser.add_argument("--structure-output", type=Path)
     parser.add_argument("--tokenizer-output", type=Path)
     parser.add_argument("--minimum-training-words", type=int, default=3_000_000)
     parser.add_argument("--json-output", type=Path)
@@ -98,7 +114,12 @@ def main() -> int:
     data_root = args.data_root.resolve()
     rows = read_csv(manifest_path)
     errors: list[str] = []
-    required_columns = {"event_id", "source_video_id", "principal_speaker_id", "register"}
+    required_columns = {
+        "event_id",
+        "source_video_id",
+        "principal_speaker_id",
+        "register",
+    }
     columns = set(rows[0]) if rows else set()
     if not rows:
         add_error(errors, "manifest has no events")
@@ -108,8 +129,12 @@ def main() -> int:
 
     event_ids = [row.get("event_id", "").strip() for row in rows]
     video_ids = [row.get("source_video_id", "").strip() for row in rows]
-    duplicate_events = sorted(value for value, count in Counter(event_ids).items() if value and count > 1)
-    duplicate_videos = sorted(value for value, count in Counter(video_ids).items() if value and count > 1)
+    duplicate_events = sorted(
+        value for value, count in Counter(event_ids).items() if value and count > 1
+    )
+    duplicate_videos = sorted(
+        value for value, count in Counter(video_ids).items() if value and count > 1
+    )
     if any(not value for value in event_ids):
         add_error(errors, "manifest contains empty event_id values")
     if any(not value for value in video_ids):
@@ -122,7 +147,9 @@ def main() -> int:
     stage_index = STAGES.index(args.stage)
     counts: dict[str, Any] = {
         "manifest_events": len(rows),
-        "principal_speakers": len({row.get("principal_speaker_id", "").strip() for row in rows}),
+        "principal_speakers": len(
+            {row.get("principal_speaker_id", "").strip() for row in rows}
+        ),
     }
 
     if stage_index >= STAGES.index("audio"):
@@ -138,7 +165,14 @@ def main() -> int:
     if stage_index >= STAGES.index("transcripts"):
         valid_transcripts = 0
         for event_id in event_ids:
-            path = data_root / "derived" / "letsplay" / event_id / "raw_transcripts" / f"{event_id}.whisper_raw.json"
+            path = (
+                data_root
+                / "derived"
+                / "letsplay"
+                / event_id
+                / "raw_transcripts"
+                / f"{event_id}.whisper_raw.json"
+            )
             try:
                 payload = read_json(path)
                 valid = (
@@ -159,7 +193,11 @@ def main() -> int:
         valid_structure = 0
         for event_id in event_ids:
             directory = data_root / "derived" / "letsplay" / event_id / "structure"
-            valid = all((directory / filename).is_file() and (directory / filename).stat().st_size > 0 for filename in REQUIRED_STRUCTURE_FILES)
+            valid = all(
+                (directory / filename).is_file()
+                and (directory / filename).stat().st_size > 0
+                for filename in REQUIRED_STRUCTURE_FILES
+            )
             if valid:
                 try:
                     summary = read_json(directory / "summary.json")
@@ -178,57 +216,145 @@ def main() -> int:
                 add_error(errors, f"invalid or missing structure output: {event_id}")
         counts["valid_structure"] = valid_structure
 
+    if stage_index >= STAGES.index("combined"):
+        structure_output = (
+            args.structure_output.resolve()
+            if args.structure_output
+            else data_root / "results" / "letsplay_structure"
+        )
+        missing = [
+            name for name in REQUIRED_COMBINED_FILES if not (structure_output / name).is_file()
+        ]
+        if missing:
+            add_error(errors, f"combined structure output missing files: {missing}")
+        else:
+            combined_summary = read_json(structure_output / "summary.json")
+            combined_event_count = int(
+                combined_summary.get("totals", {}).get("event_count", -1)
+            )
+            if combined_event_count != len(rows):
+                add_error(
+                    errors,
+                    "combined structure summary event_count does not match manifest",
+                )
+            combined_events = read_csv(structure_output / "events.csv")
+            combined_ids = [row.get("event_id", "").strip() for row in combined_events]
+            if len(combined_events) != len(rows) or set(combined_ids) != set(event_ids):
+                add_error(
+                    errors,
+                    "combined events.csv does not contain every manifest event exactly once",
+                )
+            counts["combined_structure_events"] = len(combined_events)
+            counts["combined_structure_output"] = str(structure_output)
+
     if stage_index >= STAGES.index("tokenizer"):
         if args.tokenizer_output is None:
             add_error(errors, "--tokenizer-output is required for tokenizer audit")
         else:
             output = args.tokenizer_output.resolve()
-            missing = [name for name in REQUIRED_TOKENIZER_FILES if not (output / name).is_file()]
+            missing = [
+                name for name in REQUIRED_TOKENIZER_FILES if not (output / name).is_file()
+            ]
             if missing:
                 add_error(errors, f"tokenizer output missing files: {missing}")
             else:
                 summary = read_json(output / "summary.json")
                 if int(summary.get("event_count", -1)) != len(rows):
-                    add_error(errors, "tokenizer summary event_count does not match manifest")
+                    add_error(
+                        errors,
+                        "tokenizer summary event_count does not match manifest",
+                    )
                 split_rows = read_csv(output / "split_manifest.csv")
-                split_event_ids = [row.get("event_id", "").strip() for row in split_rows]
+                split_event_ids = [
+                    row.get("event_id", "").strip() for row in split_rows
+                ]
                 if len(split_rows) != len(rows) or set(split_event_ids) != set(event_ids):
-                    add_error(errors, "split manifest does not assign every manifest event exactly once")
+                    add_error(
+                        errors,
+                        "split manifest does not assign every manifest event exactly once",
+                    )
                 realized = Counter(row.get("split", "") for row in split_rows)
                 expected = expected_split_counts(len(rows))
-                if {split: realized.get(split, 0) for split in expected} != expected:
-                    add_error(errors, f"global split counts differ: realized={dict(realized)}, expected={expected}")
+                if {
+                    split: realized.get(split, 0) for split in expected
+                } != expected:
+                    add_error(
+                        errors,
+                        f"global split counts differ: realized={dict(realized)}, expected={expected}",
+                    )
                 by_speaker: dict[str, set[str]] = defaultdict(set)
                 for row in split_rows:
-                    by_speaker[row.get("principal_speaker_id", "")].add(row.get("split", ""))
-                missing_speaker_splits = sorted(speaker for speaker, splits in by_speaker.items() if splits != {"train", "validation", "test"})
+                    by_speaker[row.get("principal_speaker_id", "")].add(
+                        row.get("split", "")
+                    )
+                missing_speaker_splits = sorted(
+                    speaker
+                    for speaker, splits in by_speaker.items()
+                    if splits != {"train", "validation", "test"}
+                )
                 if missing_speaker_splits:
-                    add_error(errors, f"speakers missing one or more splits: {missing_speaker_splits}")
+                    add_error(
+                        errors,
+                        "speakers missing one or more splits: "
+                        f"{missing_speaker_splits}",
+                    )
 
                 timing_records = 0
                 for split in ("train", "validation", "test"):
-                    with (output / f"{split}_events.jsonl").open(encoding="utf-8") as handle:
+                    with (output / f"{split}_events.jsonl").open(
+                        encoding="utf-8"
+                    ) as handle:
                         for line_number, line in enumerate(handle, start=1):
                             record = json.loads(line)
                             units = record.get("units")
                             if not isinstance(units, list) or not units:
-                                add_error(errors, f"{split}_events.jsonl line {line_number} lacks unit timing records")
+                                add_error(
+                                    errors,
+                                    f"{split}_events.jsonl line {line_number} lacks unit timing records",
+                                )
                                 continue
                             for unit in units:
-                                if not all(key in unit for key in ("start_seconds", "end_seconds", "preceding_gap_seconds", "text", "serialized_text")):
-                                    add_error(errors, f"{split}_events.jsonl line {line_number} has incomplete unit timing metadata")
+                                if not all(
+                                    key in unit
+                                    for key in (
+                                        "start_seconds",
+                                        "end_seconds",
+                                        "preceding_gap_seconds",
+                                        "text",
+                                        "serialized_text",
+                                    )
+                                ):
+                                    add_error(
+                                        errors,
+                                        f"{split}_events.jsonl line {line_number} has incomplete unit timing metadata",
+                                    )
                                     break
                                 timing_records += 1
                 counts["tokenizer_timing_records"] = timing_records
 
-                special_tokens = set(read_json(output / "special_tokens.json").get("special_tokens", []))
-                train_tokens = (output / "train.txt").read_text(encoding="utf-8").split()
-                training_word_estimate = sum(1 for token in train_tokens if token not in special_tokens)
+                special_tokens = set(
+                    read_json(output / "special_tokens.json").get(
+                        "special_tokens", []
+                    )
+                )
+                train_tokens = (output / "train.txt").read_text(
+                    encoding="utf-8"
+                ).split()
+                training_word_estimate = sum(
+                    1 for token in train_tokens if token not in special_tokens
+                )
                 counts["training_word_estimate"] = training_word_estimate
                 counts["minimum_training_words"] = args.minimum_training_words
                 if training_word_estimate < args.minimum_training_words:
-                    add_error(errors, f"training corpus too small: {training_word_estimate} < {args.minimum_training_words}")
-                counts["realized_split_counts"] = {split: realized.get(split, 0) for split in ("train", "validation", "test")}
+                    add_error(
+                        errors,
+                        "training corpus too small: "
+                        f"{training_word_estimate} < {args.minimum_training_words}",
+                    )
+                counts["realized_split_counts"] = {
+                    split: realized.get(split, 0)
+                    for split in ("train", "validation", "test")
+                }
                 counts["expected_split_counts"] = expected
 
     report = {

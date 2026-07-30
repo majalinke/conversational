@@ -9,15 +9,15 @@
 
 set -euo pipefail
 
-if (( $# != 3 )); then
-    echo "Usage: $0 MANIFEST_CSV DATA_ROOT ANALYSIS_ROOT" >&2
+if (( $# < 3 || $# > 4 )); then
+    echo "Usage: $0 MANIFEST_CSV DATA_ROOT ANALYSIS_ROOT [OUTPUT_DIR]" >&2
     exit 2
 fi
 
 MANIFEST_CSV="$1"
 DATA_ROOT="$2"
 ANALYSIS_ROOT="$3"
-OUTPUT_DIR="$DATA_ROOT/results/letsplay_structure"
+OUTPUT_DIR="${4:-$DATA_ROOT/results/letsplay_structure}"
 
 for path in "$MANIFEST_CSV" "$DATA_ROOT" "$ANALYSIS_ROOT"; do
     [[ -e "$path" ]] || {

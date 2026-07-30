@@ -1,7 +1,7 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "prototype_reference": "tokenizer-tuning-educational-representations/students/AH_INTERN/run_smoke_test.py",
-  "policy": "Every prototype capability must remain listed when the pipeline is scaled or revised. A capability may be implemented, not_yet_bulk_implemented, or not_applicable_with_reason, but it may not disappear silently.",
+  "policy": "Every prototype capability and every subsequently approved bulk safeguard must remain listed when the pipeline is scaled or revised. A capability may be implemented, not_yet_bulk_implemented, or not_applicable_with_reason, but it may not disappear silently.",
   "special_tokens": [
     "<UNK>",
     "<FILLER>",
@@ -17,22 +17,35 @@
       "validation",
       "test"
     ],
+    "requested_split_fractions": {
+      "train": 0.8,
+      "validation": 0.1,
+      "test": 0.1
+    },
+    "global_integer_allocation": "largest_remainder_with_train_then_validation_then_test_tie_priority",
+    "require_every_speaker_in_every_split": true,
     "serialization_unit": "native_whisper_segment_provisional_prosodic_unit",
     "silence_marker": "<SILENCE>",
     "default_silence_threshold_seconds": 0.8,
+    "continuous_timing_fields": [
+      "start_seconds",
+      "end_seconds",
+      "preceding_gap_seconds"
+    ],
     "preserve_fillers_as_transcribed_text": true,
-    "infer_unobserved_event_markers": false
+    "infer_unobserved_event_markers": false,
+    "minimum_training_word_estimate_before_bpe": 3000000
   },
   "capabilities": [
     {
       "id": "source_discovery",
       "bulk_status": "implemented",
-      "bulk_implementation": "letsplay_corpus/scripts/build_bulk_manifest.py"
+      "bulk_implementation": "letsplay_corpus/scripts/build_bulk_manifest.py and letsplay_corpus/scripts/build_expansion_manifest.py"
     },
     {
       "id": "source_manifest",
       "bulk_status": "implemented",
-      "bulk_implementation": "derived/letsplay/bulk_manifest.csv"
+      "bulk_implementation": "derived/letsplay/bulk_manifest.csv or a versioned full expansion manifest"
     },
     {
       "id": "audio_download",
@@ -72,12 +85,17 @@
     {
       "id": "tokenizer_training_corpus",
       "bulk_status": "implemented",
-      "bulk_implementation": "derived/letsplay/tokenizer_corpus"
+      "bulk_implementation": "letsplay_corpus/scripts/prepare_tokenizer_corpus.py"
+    },
+    {
+      "id": "corpus_sufficiency_gate",
+      "bulk_status": "implemented",
+      "bulk_implementation": "letsplay_corpus/scripts/audit_bulk_pipeline.py --stage tokenizer"
     },
     {
       "id": "bpe_tokenizer_training",
       "bulk_status": "not_yet_bulk_implemented",
-      "reason": "The present repair restores the missing bulk training-set preparation stage. Bulk tokenizer training remains a separate explicit next stage and must not be reported as complete."
+      "reason": "Bulk tokenizer training remains a separate explicit stage and must not run until the corpus sufficiency and split-integrity gate passes."
     },
     {
       "id": "special_token_atomicity_check",

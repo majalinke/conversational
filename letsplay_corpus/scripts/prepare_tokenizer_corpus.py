@@ -22,7 +22,6 @@ SPECIAL_TOKENS = [
     "<OVERLAP>",
     "<UNINTELLIGIBLE>",
 ]
-
 SPLITS = ("train", "validation", "test")
 
 
@@ -35,10 +34,7 @@ def read_json(path: Path) -> dict[str, Any]:
 
 def write_json(path: Path, value: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        json.dumps(value, ensure_ascii=False, indent=2) + "\n",
-        encoding="utf-8",
-    )
+    path.write_text(json.dumps(value, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
 def write_jsonl(path: Path, rows: Iterable[dict[str, Any]]) -> None:
@@ -70,35 +66,24 @@ def load_manifest(path: Path) -> list[dict[str, str]]:
     event_ids = [row["event_id"].strip() for row in rows]
     if not event_ids:
         raise ValueError("Manifest has no events")
-    duplicates = sorted(
-        event_id for event_id, count in Counter(event_ids).items() if count > 1
-    )
+    duplicates = sorted(event_id for event_id, count in Counter(event_ids).items() if count > 1)
     if duplicates:
         raise ValueError(f"Duplicate event IDs in manifest: {duplicates}")
     return rows
 
 
-def split_counts(
-    event_count: int,
-    train_fraction: float,
-    validation_fraction: float,
-) -> tuple[int, int, int]:
-    if event_count < 3:
-        raise ValueError(
-            "At least three events per speaker are required for event-level "
-            f"train/validation/test splits; found {event_count}"
-        )
-    train_count = max(1, math.floor(event_count * train_fraction))
-    validation_count = max(1, math.floor(event_count * validation_fraction))
-    test_count = event_count - train_count - validation_count
-    if test_count < 1:
-        deficit = 1 - test_count
-        train_count -= deficit
-        test_count = 1
-    if train_count < 1:
-        raise ValueError(f"Cannot allocate non-empty splits from {event_count} events")
-    assert train_count + validation_count + test_count == event_count
-    return train_count, validation_count, test_count
+def largest_remainder_counts(total: int, fractions: dict[str, float]) -> dict[str, int]:
+    raw = {split: total * fractions[split] for split in SPLITS}
+    counts = {split: math.floor(raw[split]) for split in SPLITS}
+    remaining = total - sum(counts.values())
+    order = sorted(
+        SPLITS,
+        key=lambda split: (raw[split] - counts[split], -SPLITS.index(split)),
+        reverse=True,
+    )
+    for split in order[:remaining]:
+        counts[split] += 1
+    return counts
 
 
 def deterministic_split(
@@ -106,7 +91,14 @@ def deterministic_split(
     seed: int,
     train_fraction: float,
     validation_fraction: float,
-) -> dict[str, str]:
+) -> tuple[dict[str, str], dict[str, int]]:
+    fractions = {
+        "train": train_fraction,
+        "validation": validation_fraction,
+        "test": 1.0 - train_fraction - validation_fraction,
+    }
+    target_counts = largest_remainder_counts(len(manifest_rows), fractions)
+
     by_speaker: dict[str, list[str]] = defaultdict(list)
     for row in manifest_rows:
         speaker = row["principal_speaker_id"].strip()
@@ -115,7 +107,21 @@ def deterministic_split(
             raise ValueError(f"Missing principal_speaker_id for {event_id}")
         by_speaker[speaker].append(event_id)
 
+    speaker_count = len(by_speaker)
+    if any(len(event_ids) < 3 for event_ids in by_speaker.values()):
+        counts = {speaker: len(event_ids) for speaker, event_ids in by_speaker.items()}
+        raise ValueError(f"At least three events per speaker are required: {counts}")
+    for split in SPLITS:
+        if target_counts[split] < speaker_count:
+            raise ValueError(
+                f"Global {split} target {target_counts[split]} cannot include all "
+                f"{speaker_count} speakers"
+            )
+
     assignment: dict[str, str] = {}
+    assigned_counts = Counter()
+    remaining_events: list[tuple[str, str]] = []
+
     for speaker, event_ids in sorted(by_speaker.items()):
         ordered = sorted(
             event_ids,
@@ -123,39 +129,63 @@ def deterministic_split(
                 f"{seed}:{speaker}:{event_id}".encode("utf-8")
             ).hexdigest(),
         )
-        train_count, validation_count, _ = split_counts(
-            len(ordered), train_fraction, validation_fraction
-        )
-        for index, event_id in enumerate(ordered):
-            if index < train_count:
-                split = "train"
-            elif index < train_count + validation_count:
-                split = "validation"
-            else:
-                split = "test"
+        for split, event_id in zip(SPLITS, ordered[:3], strict=True):
             assignment[event_id] = split
-    return assignment
+            assigned_counts[split] += 1
+        remaining_events.extend((speaker, event_id) for event_id in ordered[3:])
+
+    remaining_targets = {
+        split: target_counts[split] - assigned_counts[split] for split in SPLITS
+    }
+    ordered_remaining = sorted(
+        remaining_events,
+        key=lambda item: hashlib.sha256(
+            f"{seed}:remaining:{item[0]}:{item[1]}".encode("utf-8")
+        ).hexdigest(),
+    )
+    for _, event_id in ordered_remaining:
+        eligible = [split for split in SPLITS if remaining_targets[split] > 0]
+        if not eligible:
+            raise AssertionError("No remaining split capacity")
+        split = max(
+            eligible,
+            key=lambda name: (
+                remaining_targets[name] / target_counts[name],
+                -SPLITS.index(name),
+            ),
+        )
+        assignment[event_id] = split
+        remaining_targets[split] -= 1
+
+    if any(remaining_targets.values()):
+        raise AssertionError(f"Unfilled split targets: {remaining_targets}")
+    realized = Counter(assignment.values())
+    if any(realized[split] != target_counts[split] for split in SPLITS):
+        raise AssertionError(f"Split allocation mismatch: {realized} != {target_counts}")
+    return assignment, target_counts
 
 
 def serialize_event(
     transcript: dict[str, Any],
     silence_threshold_seconds: float,
-) -> tuple[list[str], dict[str, int]]:
+) -> tuple[list[str], list[dict[str, Any]], dict[str, int]]:
     segments = transcript.get("segments")
     if not isinstance(segments, list) or not segments:
         raise ValueError("Transcript has no segments")
     ordered = sorted(
-        segments,
+        enumerate(segments),
         key=lambda item: (
-            float(item.get("start", 0.0)),
-            float(item.get("end", 0.0)),
+            float(item[1].get("start", 0.0)),
+            float(item[1].get("end", 0.0)),
+            item[0],
         ),
     )
-    units: list[str] = []
+    serialized_units: list[str] = []
+    unit_records: list[dict[str, Any]] = []
     inserted_silences = 0
     empty_segments = 0
     previous_end = 0.0
-    for segment in ordered:
+    for original_segment_index, segment in ordered:
         start = float(segment.get("start", 0.0))
         end = float(segment.get("end", start))
         text = normalized_text(segment.get("text", ""))
@@ -164,18 +194,34 @@ def serialize_event(
         if not text:
             empty_segments += 1
             continue
-        if gap >= silence_threshold_seconds:
-            units.append(f"<SILENCE> {text}")
+        silence_inserted = gap >= silence_threshold_seconds
+        serialized_text = f"<SILENCE> {text}" if silence_inserted else text
+        if silence_inserted:
             inserted_silences += 1
-        else:
-            units.append(text)
-    if not units:
+        serialized_units.append(serialized_text)
+        unit_records.append(
+            {
+                "segment_index": original_segment_index,
+                "start_seconds": start,
+                "end_seconds": end,
+                "preceding_gap_seconds": gap,
+                "silence_inserted": silence_inserted,
+                "text": text,
+                "serialized_text": serialized_text,
+            }
+        )
+    if not serialized_units:
         raise ValueError("Transcript contains no non-empty text segments")
-    return units, {
-        "unit_count": len(units),
+    return serialized_units, unit_records, {
+        "unit_count": len(serialized_units),
         "inserted_silence_count": inserted_silences,
         "empty_segment_count": empty_segments,
     }
+
+
+def running_word_estimate(units: Sequence[str]) -> int:
+    special = set(SPECIAL_TOKENS)
+    return sum(1 for token in "\n".join(units).split() if token not in special)
 
 
 def main() -> int:
@@ -202,11 +248,8 @@ def main() -> int:
     data_root = args.data_root.resolve()
     output_dir = args.output_dir.resolve()
     manifest_rows = load_manifest(manifest_path)
-    assignment = deterministic_split(
-        manifest_rows,
-        args.seed,
-        args.train_fraction,
-        args.validation_fraction,
+    assignment, target_counts = deterministic_split(
+        manifest_rows, args.seed, args.train_fraction, args.validation_fraction
     )
 
     temporary_dir = output_dir.with_name(f".{output_dir.name}.partial")
@@ -215,15 +258,14 @@ def main() -> int:
     temporary_dir.mkdir(parents=True)
 
     split_units: dict[str, list[str]] = {split: [] for split in SPLITS}
-    split_event_rows: dict[str, list[dict[str, Any]]] = {
-        split: [] for split in SPLITS
-    }
+    split_event_rows: dict[str, list[dict[str, Any]]] = {split: [] for split in SPLITS}
     event_rows: list[dict[str, Any]] = []
     aggregate = {
         split: {
             "event_count": 0,
             "unit_count": 0,
             "character_count": 0,
+            "running_word_estimate": 0,
             "inserted_silence_count": 0,
         }
         for split in SPLITS
@@ -251,11 +293,11 @@ def main() -> int:
                     "Transcript source_id does not match manifest event_id: "
                     f"{transcript.get('source_id')!r} != {event_id!r}"
                 )
-            units, counts = serialize_event(
-                transcript,
-                args.silence_threshold_seconds,
+            units, unit_records, counts = serialize_event(
+                transcript, args.silence_threshold_seconds
             )
             characters = sum(len(unit) for unit in units)
+            words = running_word_estimate(units)
 
             split_units[split].extend(units)
             split_event_rows[split].append(
@@ -264,9 +306,9 @@ def main() -> int:
                     "principal_speaker_id": speaker,
                     "register": register,
                     "unit_count": counts["unit_count"],
-                    "inserted_silence_count": counts[
-                        "inserted_silence_count"
-                    ],
+                    "running_word_estimate": words,
+                    "inserted_silence_count": counts["inserted_silence_count"],
+                    "units": unit_records,
                     "text": "\n".join(units),
                 }
             )
@@ -280,15 +322,15 @@ def main() -> int:
                     "duration_seconds": transcript.get("duration", ""),
                     "unit_count": counts["unit_count"],
                     "character_count": characters,
-                    "inserted_silence_count": counts[
-                        "inserted_silence_count"
-                    ],
+                    "running_word_estimate": words,
+                    "inserted_silence_count": counts["inserted_silence_count"],
                     "empty_segment_count": counts["empty_segment_count"],
                 }
             )
             aggregate[split]["event_count"] += 1
             aggregate[split]["unit_count"] += counts["unit_count"]
             aggregate[split]["character_count"] += characters
+            aggregate[split]["running_word_estimate"] += words
             aggregate[split]["inserted_silence_count"] += counts[
                 "inserted_silence_count"
             ]
@@ -297,12 +339,10 @@ def main() -> int:
             if not split_event_rows[split]:
                 raise ValueError(f"Split {split!r} has no events")
             (temporary_dir / f"{split}.txt").write_text(
-                "\n".join(split_units[split]) + "\n",
-                encoding="utf-8",
+                "\n".join(split_units[split]) + "\n", encoding="utf-8"
             )
             write_jsonl(
-                temporary_dir / f"{split}_events.jsonl",
-                split_event_rows[split],
+                temporary_dir / f"{split}_events.jsonl", split_event_rows[split]
             )
 
         write_csv(
@@ -317,51 +357,43 @@ def main() -> int:
                 "duration_seconds",
                 "unit_count",
                 "character_count",
+                "running_word_estimate",
                 "inserted_silence_count",
                 "empty_segment_count",
             ],
         )
-        write_json(
-            temporary_dir / "special_tokens.json",
-            {"special_tokens": SPECIAL_TOKENS},
-        )
+        write_json(temporary_dir / "special_tokens.json", {"special_tokens": SPECIAL_TOKENS})
         write_json(
             temporary_dir / "summary.json",
             {
-                "schema_version": 1,
+                "schema_version": 2,
                 "manifest": str(manifest_path),
                 "event_count": len(event_rows),
                 "split_unit": "complete_event",
-                "serialization_unit": (
-                    "native_whisper_segment_provisional_prosodic_unit"
-                ),
+                "serialization_unit": "native_whisper_segment_provisional_prosodic_unit",
                 "silence_marker": "<SILENCE>",
                 "silence_measurement": "gap_between_native_whisper_segments",
                 "silence_threshold_seconds": args.silence_threshold_seconds,
+                "continuous_timing_fields": [
+                    "start_seconds",
+                    "end_seconds",
+                    "preceding_gap_seconds",
+                ],
                 "seed": args.seed,
                 "requested_fractions": {
                     "train": args.train_fraction,
                     "validation": args.validation_fraction,
-                    "test": round(
-                        1.0
-                        - args.train_fraction
-                        - args.validation_fraction,
-                        10,
-                    ),
+                    "test": round(1.0 - args.train_fraction - args.validation_fraction, 10),
                 },
+                "target_event_counts": target_counts,
                 "special_tokens": SPECIAL_TOKENS,
                 "splits": aggregate,
                 "notes": [
                     "Fillers are preserved as transcribed text.",
                     "Only <SILENCE> is inserted automatically.",
-                    (
-                        "No <NOISE>, <OVERLAP>, <UNINTELLIGIBLE>, or "
-                        "<FILLER> markers are inferred without source annotations."
-                    ),
-                    (
-                        "Whisper segment gaps are provisional timing measurements, "
-                        "not audio-derived pauses."
-                    ),
+                    "No <NOISE>, <OVERLAP>, <UNINTELLIGIBLE>, or <FILLER> markers are inferred without source annotations.",
+                    "Whisper segment gaps are provisional timing measurements, not audio-derived pauses.",
+                    "Continuous segment start, end, and preceding-gap values are retained in event JSONL records.",
                 ],
             },
         )
@@ -379,11 +411,7 @@ def main() -> int:
 
     print(
         json.dumps(
-            {
-                "output_dir": str(output_dir),
-                "event_count": len(event_rows),
-                "splits": aggregate,
-            },
+            {"output_dir": str(output_dir), "event_count": len(event_rows), "splits": aggregate},
             indent=2,
         )
     )

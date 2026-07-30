@@ -103,6 +103,9 @@ trap 'rm -rf "$TEMP_DIR_HOST"' EXIT
 export TOKENIZER_REPO_ROOT="$TOKENIZER_ROOT"
 export TOKENIZER_DATA_DIR="$DATA_ROOT"
 export TOKENIZER_ANALYSIS_ROOT="$ANALYSIS_ROOT"
+# The shared image is GPU-capable, but this worker runs on CPU-only nodes.
+# Tell Enroot's NVIDIA hook to skip driver injection.
+export NVIDIA_VISIBLE_DEVICES=void
 
 TRANSCRIPT_CONTAINER="/workspace/data/derived/letsplay/${EVENT_ID}/raw_transcripts/${EVENT_ID}.whisper_raw.json"
 TEMP_DIR_CONTAINER="/workspace/data/derived/letsplay/${EVENT_ID}/$(basename "$TEMP_DIR_HOST")"

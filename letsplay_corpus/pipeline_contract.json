@@ -1,0 +1,93 @@
+{
+  "schema_version": 1,
+  "prototype_reference": "tokenizer-tuning-educational-representations/students/AH_INTERN/run_smoke_test.py",
+  "policy": "Every prototype capability must remain listed when the pipeline is scaled or revised. A capability may be implemented, not_yet_bulk_implemented, or not_applicable_with_reason, but it may not disappear silently.",
+  "special_tokens": [
+    "<UNK>",
+    "<FILLER>",
+    "<SILENCE>",
+    "<NOISE>",
+    "<OVERLAP>",
+    "<UNINTELLIGIBLE>"
+  ],
+  "training_data_contract": {
+    "split_unit": "complete_event",
+    "splits": [
+      "train",
+      "validation",
+      "test"
+    ],
+    "serialization_unit": "native_whisper_segment_provisional_prosodic_unit",
+    "silence_marker": "<SILENCE>",
+    "default_silence_threshold_seconds": 0.8,
+    "preserve_fillers_as_transcribed_text": true,
+    "infer_unobserved_event_markers": false
+  },
+  "capabilities": [
+    {
+      "id": "source_discovery",
+      "bulk_status": "implemented",
+      "bulk_implementation": "letsplay_corpus/scripts/build_bulk_manifest.py"
+    },
+    {
+      "id": "source_manifest",
+      "bulk_status": "implemented",
+      "bulk_implementation": "derived/letsplay/bulk_manifest.csv"
+    },
+    {
+      "id": "audio_download",
+      "bulk_status": "implemented",
+      "bulk_implementation": "letsplay_corpus/scripts/download_bulk_event.sbatch"
+    },
+    {
+      "id": "raw_whisper_transcription",
+      "bulk_status": "implemented",
+      "bulk_implementation": "letsplay_corpus/scripts/transcribe_bulk_event.sbatch"
+    },
+    {
+      "id": "raw_transcript_preservation",
+      "bulk_status": "implemented",
+      "bulk_implementation": "derived/letsplay/<event_id>/raw_transcripts/<event_id>.whisper_raw.json"
+    },
+    {
+      "id": "whisper_gap_measurement",
+      "bulk_status": "implemented",
+      "bulk_implementation": "letsplay_corpus/scripts/prepare_tokenizer_corpus.py"
+    },
+    {
+      "id": "silence_serialization",
+      "bulk_status": "implemented",
+      "bulk_implementation": "letsplay_corpus/scripts/prepare_tokenizer_corpus.py"
+    },
+    {
+      "id": "spacy_structure_annotation",
+      "bulk_status": "implemented",
+      "bulk_implementation": "letsplay_corpus/scripts/annotate_bulk_event.sbatch"
+    },
+    {
+      "id": "event_level_data_splits",
+      "bulk_status": "implemented",
+      "bulk_implementation": "letsplay_corpus/scripts/prepare_tokenizer_corpus.py"
+    },
+    {
+      "id": "tokenizer_training_corpus",
+      "bulk_status": "implemented",
+      "bulk_implementation": "derived/letsplay/tokenizer_corpus"
+    },
+    {
+      "id": "bpe_tokenizer_training",
+      "bulk_status": "not_yet_bulk_implemented",
+      "reason": "The present repair restores the missing bulk training-set preparation stage. Bulk tokenizer training remains a separate explicit next stage and must not be reported as complete."
+    },
+    {
+      "id": "special_token_atomicity_check",
+      "bulk_status": "not_yet_bulk_implemented",
+      "reason": "This check must run after the bulk BPE tokenizer is trained."
+    },
+    {
+      "id": "dummy_downstream_task",
+      "bulk_status": "not_yet_bulk_implemented",
+      "reason": "The AH_INTERN smoke test contains the wiring test; a bulk equivalent has not yet been added."
+    }
+  ]
+}

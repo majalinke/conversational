@@ -8,6 +8,7 @@ import json
 import subprocess
 import sys
 import tempfile
+from collections import Counter
 from pathlib import Path
 
 EXPECTED_CAPABILITIES = {
@@ -46,6 +47,7 @@ def write_fixture_transcript(path: Path, event_id: str) -> None:
         json.dumps(
             {
                 "source_id": event_id,
+                "model": "large-v3",
                 "language": "en",
                 "duration": 4.0,
                 "segments": [
@@ -88,7 +90,7 @@ def main() -> int:
         output_dir = temporary_path / "tokenizer_corpus"
         rows: list[dict[str, str]] = []
         for speaker in ("speaker_a", "speaker_b", "speaker_c"):
-            for index in range(3):
+            for index in range(10):
                 event_id = f"event_{speaker}_{index}"
                 rows.append(
                     {
@@ -152,6 +154,11 @@ def main() -> int:
             split_rows = list(csv.DictReader(handle))
         assert len(split_rows) == len(rows)
         assert len({row["event_id"] for row in split_rows}) == len(rows)
+        assert Counter(row["split"] for row in split_rows) == {
+            "train": 24,
+            "validation": 3,
+            "test": 3,
+        }
         by_speaker: dict[str, set[str]] = {}
         for row in split_rows:
             by_speaker.setdefault(row["principal_speaker_id"], set()).add(
@@ -169,11 +176,38 @@ def main() -> int:
         assert "uh hello" in corpus_text
         assert "<SILENCE> second segment" in corpus_text
 
+        event_records = []
+        for split in ("train", "validation", "test"):
+            event_records.extend(
+                json.loads(line)
+                for line in (output_dir / f"{split}_events.jsonl")
+                .read_text(encoding="utf-8")
+                .splitlines()
+            )
+        assert len(event_records) == len(rows)
+        second_unit = event_records[0]["units"][1]
+        assert second_unit["start_seconds"] == 2.0
+        assert second_unit["end_seconds"] == 3.0
+        assert second_unit["preceding_gap_seconds"] == 1.5
+        assert second_unit["silence_inserted"] is True
+        assert second_unit["serialized_text"] == "<SILENCE> second segment"
+
         summary = json.loads(
             (output_dir / "summary.json").read_text(encoding="utf-8")
         )
+        assert summary["schema_version"] == 2
         assert summary["event_count"] == len(rows)
         assert summary["split_unit"] == "complete_event"
+        assert summary["target_event_counts"] == {
+            "train": 24,
+            "validation": 3,
+            "test": 3,
+        }
+        assert summary["continuous_timing_fields"] == [
+            "start_seconds",
+            "end_seconds",
+            "preceding_gap_seconds",
+        ]
         assert summary["special_tokens"] == EXPECTED_SPECIAL_TOKENS
 
     print("pipeline contract and BPE corpus fixture passed")

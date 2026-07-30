@@ -9,8 +9,8 @@
 
 set -euo pipefail
 
-if (( $# < 3 || $# > 4 )); then
-    echo "Usage: $0 MANIFEST_CSV DATA_ROOT ANALYSIS_ROOT [SILENCE_THRESHOLD_SECONDS]" >&2
+if (( $# < 3 || $# > 5 )); then
+    echo "Usage: $0 MANIFEST_CSV DATA_ROOT ANALYSIS_ROOT [SILENCE_THRESHOLD_SECONDS] [OUTPUT_DIR]" >&2
     exit 2
 fi
 
@@ -18,7 +18,7 @@ MANIFEST_CSV="$1"
 DATA_ROOT="$2"
 ANALYSIS_ROOT="$3"
 SILENCE_THRESHOLD_SECONDS="${4:-0.8}"
-OUTPUT_DIR="$DATA_ROOT/derived/letsplay/tokenizer_corpus"
+OUTPUT_DIR="${5:-$DATA_ROOT/derived/letsplay/tokenizer_corpus}"
 
 for path in "$MANIFEST_CSV" "$DATA_ROOT" "$ANALYSIS_ROOT"; do
     [[ -e "$path" ]] || {
